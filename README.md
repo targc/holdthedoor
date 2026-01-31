@@ -57,8 +57,16 @@ go build -o bin/agent ./agent
 
 ```bash
 curl -sL https://raw.githubusercontent.com/targc/holdthedoor/main/install-agent.sh | sudo bash -s -- \
-  --server ws://YOUR_SERVER:8080/ws/agent \
+  --server wss://YOUR_SERVER/ws/agent \
   --token YOUR_SECRET_TOKEN
+```
+
+> Use `wss://` for HTTPS servers, `ws://` for HTTP.
+
+To uninstall:
+
+```bash
+curl -sL https://raw.githubusercontent.com/targc/holdthedoor/main/uninstall-agent.sh | sudo bash
 ```
 
 This downloads the correct binary, installs it, and sets up a systemd service (Linux).
@@ -67,7 +75,7 @@ Or manually:
 
 ```bash
 ./agent \
-  --server ws://YOUR_SERVER:8080/ws/agent \
+  --server wss://YOUR_SERVER/ws/agent \
   --server-pubkey server.pub \
   --token YOUR_SECRET_TOKEN \
   --name "my-vm"
