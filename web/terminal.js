@@ -1,280 +1,185 @@
-let term = null;
-let ws = null;
-let fitAddon = null;
-let currentVM = null;
-let countdownInterval = null;
+function app() {
+    return {
+        // Auth
+        loggedIn: false,
+        username: '',
+        password: '',
+        loginError: '',
+        token: '',
+        expires: 0,
 
-// Auth
-function getToken() {
-    return localStorage.getItem('token');
-}
+        // App
+        vms: [],
+        currentVM: null,
+        status: '',
+        countdown: '',
 
-function getExpires() {
-    return parseInt(localStorage.getItem('expires') || '0', 10);
-}
+        // Internal
+        term: null,
+        ws: null,
+        fitAddon: null,
+        countdownInterval: null,
+        vmInterval: null,
 
-function setAuth(token, expires) {
-    localStorage.setItem('token', token);
-    localStorage.setItem('expires', expires.toString());
-}
+        init() {
+            this.token = localStorage.getItem('token') || '';
+            this.expires = parseInt(localStorage.getItem('expires') || '0', 10);
 
-function clearAuth() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('expires');
-}
+            if (this.token && this.expires > Date.now() / 1000) {
+                this.loggedIn = true;
+                this.startCountdown();
+                this.loadVMs();
+                this.vmInterval = setInterval(() => this.loadVMs(), 5000);
+            }
+        },
 
-function isLoggedIn() {
-    const token = getToken();
-    const expires = getExpires();
-    return token && expires > Date.now() / 1000;
-}
+        async login() {
+            this.loginError = '';
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: this.username, password: this.password })
+                });
+                const data = await res.json();
 
-// UI State
-function showLogin() {
-    document.getElementById('login-container').style.display = 'flex';
-    document.getElementById('app').style.display = 'none';
-    stopCountdown();
-}
+                if (!res.ok) {
+                    this.loginError = data.error || 'login failed';
+                    return;
+                }
 
-function showApp() {
-    document.getElementById('login-container').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
-    startCountdown();
-    loadVMs();
-}
+                this.token = data.token;
+                this.expires = data.expires;
+                localStorage.setItem('token', this.token);
+                localStorage.setItem('expires', this.expires.toString());
 
-// Login
-document.getElementById('login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-    const errorEl = document.getElementById('login-error');
+                this.loggedIn = true;
+                this.username = '';
+                this.password = '';
+                this.startCountdown();
+                this.loadVMs();
+                this.vmInterval = setInterval(() => this.loadVMs(), 5000);
+            } catch (e) {
+                this.loginError = 'connection error';
+            }
+        },
 
-    try {
-        const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
+        logout() {
+            this.loggedIn = false;
+            this.token = '';
+            this.expires = 0;
+            this.vms = [];
+            this.currentVM = null;
+            this.status = '';
+            localStorage.removeItem('token');
+            localStorage.removeItem('expires');
 
-        const data = await res.json();
+            if (this.ws) { this.ws.close(); this.ws = null; }
+            if (this.term) { this.term.dispose(); this.term = null; }
+            if (this.countdownInterval) { clearInterval(this.countdownInterval); }
+            if (this.vmInterval) { clearInterval(this.vmInterval); }
+        },
 
-        if (!res.ok) {
-            errorEl.textContent = data.error || 'Login failed';
-            errorEl.style.display = 'block';
-            return;
-        }
+        startCountdown() {
+            this.updateCountdown();
+            this.countdownInterval = setInterval(() => this.updateCountdown(), 1000);
+        },
 
-        setAuth(data.token, data.expires);
-        errorEl.style.display = 'none';
-        showApp();
-    } catch (err) {
-        errorEl.textContent = 'Connection error';
-        errorEl.style.display = 'block';
-    }
-});
+        updateCountdown() {
+            const now = Math.floor(Date.now() / 1000);
+            const remaining = this.expires - now;
 
-// Logout
-document.getElementById('logout-btn').addEventListener('click', () => {
-    logout();
-});
+            if (remaining <= 0) {
+                this.logout();
+                return;
+            }
 
-function logout() {
-    clearAuth();
-    if (ws) {
-        ws.close();
-        ws = null;
-    }
-    if (term) {
-        term.dispose();
-        term = null;
-    }
-    currentVM = null;
-    showLogin();
-}
+            const m = Math.floor(remaining / 60);
+            const s = remaining % 60;
+            this.countdown = `[${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}]`;
+        },
 
-// Countdown
-function startCountdown() {
-    updateCountdown();
-    countdownInterval = setInterval(updateCountdown, 1000);
-}
+        async loadVMs() {
+            if (!this.loggedIn) return;
 
-function stopCountdown() {
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-    }
-}
+            try {
+                const res = await fetch('/api/vms', {
+                    headers: { 'Authorization': `Bearer ${this.token}` }
+                });
 
-function updateCountdown() {
-    const expires = getExpires();
-    const now = Math.floor(Date.now() / 1000);
-    const remaining = expires - now;
+                if (res.status === 401) {
+                    this.logout();
+                    return;
+                }
 
-    if (remaining <= 0) {
-        logout();
-        return;
-    }
+                const data = await res.json();
+                this.vms = data.vms || [];
+            } catch (e) {
+                console.error('Failed to load VMs:', e);
+            }
+        },
 
-    const minutes = Math.floor(remaining / 60);
-    const seconds = remaining % 60;
-    document.getElementById('countdown').textContent =
-        `Session: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-}
+        connect(vm) {
+            if (this.currentVM === vm.id) return;
 
-// API calls with auth
-async function fetchWithAuth(url, options = {}) {
-    const token = getToken();
-    const res = await fetch(url, {
-        ...options,
-        headers: {
-            ...options.headers,
-            'Authorization': `Bearer ${token}`
-        }
-    });
+            this.status = `--connecting ${vm.name}...`;
 
-    if (res.status === 401) {
-        logout();
-        throw new Error('Unauthorized');
-    }
+            if (this.ws) { this.ws.close(); this.ws = null; }
+            if (this.term) { this.term.dispose(); }
 
-    return res;
-}
+            this.term = new Terminal({
+                cursorBlink: true,
+                fontSize: 13,
+                fontFamily: 'Menlo, Monaco, monospace',
+                theme: {
+                    background: '#0a0a0a',
+                    foreground: '#e5e5e5',
+                    cursor: '#dc2626',
+                    selectionBackground: '#dc262644'
+                }
+            });
 
-// VMs
-async function loadVMs() {
-    if (!isLoggedIn()) return;
+            this.fitAddon = new FitAddon.FitAddon();
+            this.term.loadAddon(this.fitAddon);
+            this.term.open(document.getElementById('terminal'));
+            this.fitAddon.fit();
 
-    try {
-        const res = await fetchWithAuth('/api/vms');
-        const data = await res.json();
-        renderVMList(data.vms || []);
-    } catch (err) {
-        if (err.message !== 'Unauthorized') {
-            console.error('Failed to load VMs:', err);
-            document.getElementById('vm-list').innerHTML = '<li class="no-vms">Failed to load VMs</li>';
-        }
-    }
-}
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            this.ws = new WebSocket(`${protocol}//${location.host}/ws/terminal/${vm.id}?token=${this.token}`);
 
-function renderVMList(vms) {
-    const list = document.getElementById('vm-list');
-    if (vms.length === 0) {
-        list.innerHTML = '<li class="no-vms">No VMs connected</li>';
-        return;
-    }
+            this.ws.onopen = () => {
+                this.currentVM = vm.id;
+                this.status = `--${vm.name}`;
+                this.ws.send(JSON.stringify({ type: 'resize', cols: this.term.cols, rows: this.term.rows }));
+            };
 
-    list.innerHTML = vms.map(vm => `
-        <li class="vm-item" data-id="${vm.id}" onclick="connectVM('${vm.id}', '${vm.name}')">
-            <div class="hostname">${vm.name}</div>
-            <div class="info">${vm.ip} · ${vm.os}</div>
-        </li>
-    `).join('');
-}
+            this.ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'output') this.term.write(msg.data);
+                else if (msg.type === 'error') this.term.write(`\r\n\x1b[31m${msg.data}\x1b[0m\r\n`);
+            };
 
-function connectVM(id, hostname) {
-    if (currentVM === id) return;
-    if (!isLoggedIn()) return;
+            this.ws.onclose = () => {
+                this.status = `--disconnected`;
+                this.currentVM = null;
+            };
 
-    // Update UI
-    document.querySelectorAll('.vm-item').forEach(el => el.classList.remove('active'));
-    document.querySelector(`[data-id="${id}"]`)?.classList.add('active');
-    document.getElementById('status').innerHTML = `<span class="connecting">Connecting to ${hostname}...</span>`;
+            this.ws.onerror = () => {
+                this.status = `--error`;
+            };
 
-    // Close existing connection
-    if (ws) {
-        ws.close();
-        ws = null;
-    }
+            this.term.onData(data => {
+                if (this.ws?.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'input', data }));
+                }
+            });
 
-    // Clear terminal
-    if (term) {
-        term.dispose();
-    }
-
-    // Create new terminal
-    term = new Terminal({
-        cursorBlink: true,
-        fontSize: 14,
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        theme: {
-            background: '#1a1a2e',
-            foreground: '#eee',
-            cursor: '#e94560',
-        }
-    });
-
-    fitAddon = new FitAddon.FitAddon();
-    term.loadAddon(fitAddon);
-    term.open(document.getElementById('terminal'));
-    fitAddon.fit();
-
-    // Connect WebSocket with JWT token
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = getToken();
-    ws = new WebSocket(`${protocol}//${location.host}/ws/terminal/${id}?token=${token}`);
-
-    ws.onopen = () => {
-        currentVM = id;
-        document.getElementById('status').textContent = `Connected to ${hostname}`;
-
-        // Send initial size
-        ws.send(JSON.stringify({
-            type: 'resize',
-            cols: term.cols,
-            rows: term.rows
-        }));
-    };
-
-    ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'output') {
-            term.write(msg.data);
-        } else if (msg.type === 'error') {
-            term.write(`\r\n\x1b[31mError: ${msg.data}\x1b[0m\r\n`);
+            window.onresize = () => {
+                if (this.fitAddon && this.term && this.ws?.readyState === WebSocket.OPEN) {
+                    this.fitAddon.fit();
+                    this.ws.send(JSON.stringify({ type: 'resize', cols: this.term.cols, rows: this.term.rows }));
+                }
+            };
         }
     };
-
-    ws.onclose = () => {
-        document.getElementById('status').textContent = `Disconnected from ${hostname}`;
-        currentVM = null;
-    };
-
-    ws.onerror = (err) => {
-        console.error('WebSocket error:', err);
-        document.getElementById('status').textContent = `Connection error`;
-    };
-
-    // Send input to server
-    term.onData(data => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'input', data }));
-        }
-    });
-
-    // Handle resize
-    window.addEventListener('resize', () => {
-        if (fitAddon && term && ws && ws.readyState === WebSocket.OPEN) {
-            fitAddon.fit();
-            ws.send(JSON.stringify({
-                type: 'resize',
-                cols: term.cols,
-                rows: term.rows
-            }));
-        }
-    });
 }
-
-// Init
-if (isLoggedIn()) {
-    showApp();
-} else {
-    showLogin();
-}
-
-// Refresh VM list periodically
-setInterval(() => {
-    if (isLoggedIn()) {
-        loadVMs();
-    }
-}, 5000);
