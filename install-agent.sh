@@ -7,6 +7,7 @@ MCowBQYDK2VwAyEAxCneWbYo/xvASGVH1GNdg1RzxTnuXSFc9i5bfyAvEK8=
 
 REPO="targc/holdthedoor"
 INSTALL_DIR="/usr/local/bin"
+BINARY_NAME="holdthedoor-agent"
 SERVICE_NAME="holdthedoor-agent"
 
 usage() {
@@ -50,8 +51,8 @@ echo "Downloading agent..."
 curl -sL "$BINARY_URL" -o "$TMP_BIN"
 chmod +x "$TMP_BIN"
 
-echo "Installing to ${INSTALL_DIR}/agent..."
-sudo mv "$TMP_BIN" "${INSTALL_DIR}/agent"
+echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
+sudo mv "$TMP_BIN" "${INSTALL_DIR}/${BINARY_NAME}"
 
 PUBKEY_PATH="/etc/${SERVICE_NAME}/server.pub"
 sudo mkdir -p "$(dirname "$PUBKEY_PATH")"
@@ -66,7 +67,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_DIR}/agent --server ${SERVER_URL} --server-pubkey ${PUBKEY_PATH} --token ${TOKEN}
+ExecStart=${INSTALL_DIR}/${BINARY_NAME} --server ${SERVER_URL} --server-pubkey ${PUBKEY_PATH} --token ${TOKEN}
 Restart=always
 RestartSec=5
 
@@ -80,11 +81,11 @@ EOF
     echo "Service started. Check status: systemctl status ${SERVICE_NAME}"
 elif [[ "$OS" == "darwin" ]]; then
     echo "Starting agent..."
-    nohup ${INSTALL_DIR}/agent --server ${SERVER_URL} --server-pubkey ${PUBKEY_PATH} --token ${TOKEN} > /tmp/${SERVICE_NAME}.log 2>&1 &
+    nohup ${INSTALL_DIR}/${BINARY_NAME} --server ${SERVER_URL} --server-pubkey ${PUBKEY_PATH} --token ${TOKEN} > /tmp/${SERVICE_NAME}.log 2>&1 &
     echo "Agent started (PID: $!). Log: /tmp/${SERVICE_NAME}.log"
 else
     echo "Run agent manually:"
-    echo "  agent --server ${SERVER_URL} --server-pubkey ${PUBKEY_PATH} --token ${TOKEN}"
+    echo "  ${BINARY_NAME} --server ${SERVER_URL} --server-pubkey ${PUBKEY_PATH} --token ${TOKEN}"
 fi
 
 echo "Done!"
