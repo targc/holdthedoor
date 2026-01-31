@@ -1,4 +1,4 @@
-# PrivateShell
+# HoldTheDoor
 
 Remote shell access platform. Access VM terminals via web browser without SSH.
 
@@ -68,11 +68,11 @@ Navigate to `http://YOUR_SERVER:8080` - you'll see connected VMs in the sidebar.
 ## Docker
 
 ```bash
-docker build -f Dockerfile.server -t privateshell-server .
+docker build -f Dockerfile.server -t holdthedoor-server .
 
 docker run -p 8080:8080 \
   -v $(pwd)/keys:/app/keys:ro \
-  privateshell-server \
+  holdthedoor-server \
   --server-key /app/keys/server.key \
   --token YOUR_SECRET_TOKEN
 ```
