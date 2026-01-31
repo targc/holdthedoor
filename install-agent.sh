@@ -78,6 +78,10 @@ EOF
     sudo systemctl enable ${SERVICE_NAME}
     sudo systemctl restart ${SERVICE_NAME}
     echo "Service started. Check status: systemctl status ${SERVICE_NAME}"
+elif [[ "$OS" == "darwin" ]]; then
+    echo "Starting agent..."
+    nohup ${INSTALL_DIR}/agent --server ${SERVER_URL} --server-pubkey ${PUBKEY_PATH} --token ${TOKEN} > /tmp/${SERVICE_NAME}.log 2>&1 &
+    echo "Agent started (PID: $!). Log: /tmp/${SERVICE_NAME}.log"
 else
     echo "Run agent manually:"
     echo "  agent --server ${SERVER_URL} --server-pubkey ${PUBKEY_PATH} --token ${TOKEN}"
