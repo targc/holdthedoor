@@ -23,6 +23,10 @@ Remote shell access platform. Access VM terminals via web browser without SSH.
 - Full terminal support (vim, htop, colors, resize)
 - Web-based UI with xterm.js
 
+## Install
+
+Download pre-built binaries from [Releases](https://github.com/targc/holdthedoor/releases) or build from source.
+
 ## Quick Start
 
 ### 1. Generate Keys
@@ -49,9 +53,17 @@ go build -o bin/agent ./agent
   --token YOUR_SECRET_TOKEN
 ```
 
-### 4. Run Agent (on each VM)
+### 4. Install Agent (on each VM)
 
-Copy `bin/agent` and `keys/server.pub` to your VM, then:
+```bash
+curl -sL https://raw.githubusercontent.com/targc/holdthedoor/main/install-agent.sh | sudo bash -s -- \
+  --server ws://YOUR_SERVER:8080/ws/agent \
+  --token YOUR_SECRET_TOKEN
+```
+
+This downloads the correct binary, installs it, and sets up a systemd service (Linux).
+
+Or manually:
 
 ```bash
 ./agent \
