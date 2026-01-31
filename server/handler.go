@@ -10,6 +10,9 @@ import (
 type Server struct {
 	serverKey ed25519.PrivateKey
 	token     string
+	username  string
+	password  string
+	jwtSecret string
 	registry  *Registry
 }
 
@@ -17,10 +20,13 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-func NewServer(serverKey ed25519.PrivateKey, token string) *Server {
+func NewServer(serverKey ed25519.PrivateKey, token, username, password, jwtSecret string) *Server {
 	return &Server{
 		serverKey: serverKey,
 		token:     token,
+		username:  username,
+		password:  password,
+		jwtSecret: jwtSecret,
 		registry:  NewRegistry(),
 	}
 }
@@ -34,13 +40,16 @@ func (s *Server) SetupRoutes(app *fiber.App) {
 		return fiber.ErrUpgradeRequired
 	})
 
-	// Agent WebSocket endpoint
+	// Agent WebSocket endpoint (token auth - no JWT)
 	app.Get("/ws/agent", websocket.New(s.handleAgentWS))
 
-	// Terminal WebSocket endpoint
-	app.Get("/ws/terminal/:id", websocket.New(s.handleTerminalWS))
+	// Terminal WebSocket endpoint (JWT auth via query param)
+	app.Get("/ws/terminal/:id", s.jwtAuthWS(), websocket.New(s.handleTerminalWS))
 
-	// REST API
-	api := app.Group("/api")
+	// Public API
+	app.Post("/api/login", s.handleLogin)
+
+	// Protected API
+	api := app.Group("/api", s.jwtAuth())
 	api.Get("/vms", s.listVMs)
 }

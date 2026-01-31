@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"privateshell/pkg/crypto"
+	"holdthedoor/pkg/crypto"
 )
 
 func main() {

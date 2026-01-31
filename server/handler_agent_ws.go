@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"privateshell/pkg/crypto"
+	"holdthedoor/pkg/crypto"
 
 	"github.com/gofiber/contrib/websocket"
 )

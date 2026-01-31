@@ -2,15 +2,158 @@ let term = null;
 let ws = null;
 let fitAddon = null;
 let currentVM = null;
+let countdownInterval = null;
 
-async function loadVMs() {
+// Auth
+function getToken() {
+    return localStorage.getItem('token');
+}
+
+function getExpires() {
+    return parseInt(localStorage.getItem('expires') || '0', 10);
+}
+
+function setAuth(token, expires) {
+    localStorage.setItem('token', token);
+    localStorage.setItem('expires', expires.toString());
+}
+
+function clearAuth() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('expires');
+}
+
+function isLoggedIn() {
+    const token = getToken();
+    const expires = getExpires();
+    return token && expires > Date.now() / 1000;
+}
+
+// UI State
+function showLogin() {
+    document.getElementById('login-container').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+    stopCountdown();
+}
+
+function showApp() {
+    document.getElementById('login-container').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    startCountdown();
+    loadVMs();
+}
+
+// Login
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const errorEl = document.getElementById('login-error');
+
     try {
-        const res = await fetch('/api/vms');
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            errorEl.textContent = data.error || 'Login failed';
+            errorEl.style.display = 'block';
+            return;
+        }
+
+        setAuth(data.token, data.expires);
+        errorEl.style.display = 'none';
+        showApp();
+    } catch (err) {
+        errorEl.textContent = 'Connection error';
+        errorEl.style.display = 'block';
+    }
+});
+
+// Logout
+document.getElementById('logout-btn').addEventListener('click', () => {
+    logout();
+});
+
+function logout() {
+    clearAuth();
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
+    if (term) {
+        term.dispose();
+        term = null;
+    }
+    currentVM = null;
+    showLogin();
+}
+
+// Countdown
+function startCountdown() {
+    updateCountdown();
+    countdownInterval = setInterval(updateCountdown, 1000);
+}
+
+function stopCountdown() {
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+}
+
+function updateCountdown() {
+    const expires = getExpires();
+    const now = Math.floor(Date.now() / 1000);
+    const remaining = expires - now;
+
+    if (remaining <= 0) {
+        logout();
+        return;
+    }
+
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    document.getElementById('countdown').textContent =
+        `Session: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+// API calls with auth
+async function fetchWithAuth(url, options = {}) {
+    const token = getToken();
+    const res = await fetch(url, {
+        ...options,
+        headers: {
+            ...options.headers,
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    if (res.status === 401) {
+        logout();
+        throw new Error('Unauthorized');
+    }
+
+    return res;
+}
+
+// VMs
+async function loadVMs() {
+    if (!isLoggedIn()) return;
+
+    try {
+        const res = await fetchWithAuth('/api/vms');
         const data = await res.json();
         renderVMList(data.vms || []);
     } catch (err) {
-        console.error('Failed to load VMs:', err);
-        document.getElementById('vm-list').innerHTML = '<li class="no-vms">Failed to load VMs</li>';
+        if (err.message !== 'Unauthorized') {
+            console.error('Failed to load VMs:', err);
+            document.getElementById('vm-list').innerHTML = '<li class="no-vms">Failed to load VMs</li>';
+        }
     }
 }
 
@@ -31,6 +174,7 @@ function renderVMList(vms) {
 
 function connectVM(id, hostname) {
     if (currentVM === id) return;
+    if (!isLoggedIn()) return;
 
     // Update UI
     document.querySelectorAll('.vm-item').forEach(el => el.classList.remove('active'));
@@ -65,9 +209,10 @@ function connectVM(id, hostname) {
     term.open(document.getElementById('terminal'));
     fitAddon.fit();
 
-    // Connect WebSocket
+    // Connect WebSocket with JWT token
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${location.host}/ws/terminal/${id}`);
+    const token = getToken();
+    ws = new WebSocket(`${protocol}//${location.host}/ws/terminal/${id}?token=${token}`);
 
     ws.onopen = () => {
         currentVM = id;
@@ -120,8 +265,16 @@ function connectVM(id, hostname) {
     });
 }
 
-// Initial load
-loadVMs();
+// Init
+if (isLoggedIn()) {
+    showApp();
+} else {
+    showLogin();
+}
 
 // Refresh VM list periodically
-setInterval(loadVMs, 5000);
+setInterval(() => {
+    if (isLoggedIn()) {
+        loadVMs();
+    }
+}, 5000);
