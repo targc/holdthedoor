@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"holdthedoor/pkg/crypto"
+	"holdthedoor/server"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -47,7 +48,7 @@ func main() {
 		log.Fatalf("Failed to load server key: %v", err)
 	}
 
-	server := NewServer(serverKey, *token, uiUsername, uiPassword, uiJWTSecret)
+	server := server.NewServer(serverKey, *token, uiUsername, uiPassword, uiJWTSecret)
 
 	app := fiber.New()
 	app.Use(cors.New())

@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"holdthedoor/agent"
 	"holdthedoor/pkg/crypto"
 )
 
@@ -26,7 +27,7 @@ func main() {
 		log.Fatalf("Failed to load server public key: %v", err)
 	}
 
-	client := NewClient(*serverURL, *token, serverPubKey, *name)
+	client := agent.NewClient(*serverURL, *token, serverPubKey, *name)
 
 	// Handle shutdown
 	sigCh := make(chan os.Signal, 1)
